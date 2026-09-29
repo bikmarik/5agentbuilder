@@ -17,8 +17,10 @@ five-agent-build installer
   2) Install for Claude Code
   3) Update Codex (back up conflicting files)
   4) Update Claude Code (back up conflicting files)
-  5) Preview Codex installation (no changes)
-  6) Preview Claude Code installation (no changes)
+  5) Check Codex installation (silent, no changes)
+  6) Check Claude Code installation (silent, no changes)
+  7) Change Codex models
+  8) Change Claude Code models
   h) Show command-line options
   0) Exit
 MENU
@@ -37,23 +39,27 @@ choose_install_options() {
       4) menu_args=(--target claude --force); return 0 ;;
       5) menu_args=(--target codex --dry-run); return 0 ;;
       6) menu_args=(--target claude --dry-run); return 0 ;;
+      7) menu_args=(--target codex --models); return 0 ;;
+      8) menu_args=(--target claude --models); return 0 ;;
       h|H) menu_args=(--help); return 0 ;;
       0|'') printf 'Cancelled.\n'; return 1 ;;
-      *) printf 'Invalid choice. Enter 0-6 or h.\n' ;;
+      *) printf 'Invalid choice. Enter 0-8 or h.\n' ;;
     esac
   done
 }
 
-# Shared CLI and fixed ownership list; no global config parsing or modification.
+# Shared CLI and fixed ownership list.
 parse_options() {
   codex_dir=${CODEX_HOME:-${HOME:?HOME must be set}/.codex}
   claude_dir=${CLAUDE_CONFIG_DIR:-${HOME:?HOME must be set}/.claude}
-  target=codex
+  target=
   skills_dir=
   codex_override=0
   claude_override=0
   dry_run=0
   force=0
+  models_only=0
+  keep_models=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --target)
@@ -69,12 +75,16 @@ parse_options() {
         esac
         shift 2 ;;
       --dry-run) dry_run=1; shift ;;
+      --models|--keep-models)
+        [ "$operation" = install ] || fail "$1 is only supported for installation"
+        if [ "$1" = --models ]; then models_only=1; else keep_models=1; fi
+        shift ;;
       --force)
         [ "$operation" = install ] || fail '--force is only supported for installation'
         force=1; shift ;;
       --help|-h)
-        printf 'Usage: %s [--target codex|claude] [--dry-run] [--codex-home ABSOLUTE_PATH | --claude-home ABSOLUTE_PATH] [--skills-dir ABSOLUTE_PATH]' "$0"
-        if [ "$operation" = install ]; then printf ' [--force]'; fi
+        printf 'Usage: %s --target codex|claude [--dry-run] [--codex-home ABSOLUTE_PATH | --claude-home ABSOLUTE_PATH] [--skills-dir ABSOLUTE_PATH]' "$0"
+        if [ "$operation" = install ]; then printf ' [--force] [--models | --keep-models]'; fi
         printf '\n'; exit 0 ;;
       *) fail "Unknown option: $1" ;;
     esac
@@ -94,7 +104,7 @@ parse_options() {
       agent_sources="$repo_dir/claude/agents"
       skill_source="$repo_dir/claude/skills/five-agent-build"
       agent_extension=md ;;
-    *) fail 'Invalid --target; choose codex or claude' ;;
+    *) fail 'Choose --target codex or --target claude' ;;
   esac
   for target_root in "$agent_home" "$skills_dir"; do
     case "$target_root" in
@@ -108,6 +118,13 @@ parse_options() {
   agent_home=${agent_home%/}
   skills_dir=${skills_dir%/}
   receipt_dir="$agent_home/.five-agent-engineering"
+  [ "$models_only$keep_models" != 11 ] || fail '--models and --keep-models cannot be combined'
+  template_sources=$agent_sources
+  model_dir="$agent_home/.five-agent-build"
+  if [ -f "$model_dir/source" ] && [ ! -L "$model_dir/source" ] &&
+    printf '%s\n' "$template_sources" | cmp -s - "$model_dir/source"; then
+    agent_sources="$model_dir/agents"
+  fi
   legacy_skill="$skills_dir/five-agent-engineering"
   if [ "$target" = codex ]; then
     legacy_source="$repo_dir/skills/five-agent-engineering"
@@ -139,9 +156,13 @@ owned_link() {
 
 check_targets() {
   check_directory "$agent_home"
-  check_directory "$agent_home/agents"
+  if ! owned_link "$agent_home/agents" "$agent_sources"; then
+    check_directory "$agent_home/agents"
+  fi
   check_directory "$skills_dir"
   check_directory "$receipt_dir"
+  check_directory "$model_dir"
+  check_directory "$model_dir/agents"
   local role receipt
   for role in "${roles[@]}"; do
     for receipt in "$receipt_dir/$role.source" "$receipt_dir/$role.snapshot"; do
@@ -154,6 +175,7 @@ check_targets() {
   # Prevent a link cycle or an installation overwriting its own source checkout.
   local i parent physical_parent physical_source
   for i in 0 1 2 3 4; do
+    if [ "$i" -lt 4 ] && owned_link "$agent_home/agents" "$agent_sources"; then continue; fi
     parent=$(dirname "${destinations[$i]}")
     if [ -d "$parent" ]; then
       physical_parent=$(cd "$parent" && pwd -P)
@@ -168,10 +190,35 @@ check_targets() {
 # A missing/partial receipt is deliberately not proof of ownership.
 owned_agent() {
   local index=$1 role=${roles[$1]}
+  if owned_link "$agent_home/agents" "$agent_sources"; then
+    [ -f "${destinations[$index]}" ] && [ ! -L "${destinations[$index]}" ]
+    return
+  fi
   [ ! -L "${destinations[$index]}" ] && [ -f "${destinations[$index]}" ] &&
     [ -f "$receipt_dir/$role.source" ] && [ -f "$receipt_dir/$role.snapshot" ] &&
     printf '%s\n' "${sources[$index]}" | cmp -s - "$receipt_dir/$role.source" &&
     cmp -s "${destinations[$index]}" "$receipt_dir/$role.snapshot"
+}
+
+# Link the directory so Codex still opens regular TOMLs at the final component.
+# Shared directories retain their unrelated agents and use per-role installation.
+can_link_agents() {
+  local entry name index found
+  owned_link "$agent_home/agents" "$agent_sources" && return 0
+  [ -e "$agent_home/agents" ] || return 0
+  for entry in "$agent_home/agents"/* "$agent_home/agents"/.[!.]* "$agent_home/agents"/..?*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    name=$(basename "$entry")
+    case "$name" in .five-agent-backup.*) [ -d "$entry" ] && [ ! -L "$entry" ] && continue ;; esac
+    found=0
+    for index in 0 1 2 3; do
+      if [ "$entry" = "${destinations[$index]}" ] &&
+        { owned_agent "$index" || owned_link "$entry" "${sources[$index]}"; }; then
+        found=1; break
+      fi
+    done
+    [ "$found" -eq 1 ] || return 1
+  done
 }
 
 unchanged_resource() {

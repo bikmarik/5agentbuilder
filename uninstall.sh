@@ -7,7 +7,14 @@ operation=uninstall
 require_commands dirname basename readlink rm cmp
 parse_options "$@"
 check_targets
+linked_agents=0
+if owned_link "$agent_home/agents" "$agent_sources"; then
+  linked_agents=1
+  printf 'REMOVE %s/agents\n' "$agent_home"
+  if [ "$dry_run" -eq 0 ]; then rm "$agent_home/agents"; fi
+fi
 for i in 0 1 2 3 4; do
+  if [ "$i" -lt 4 ] && [ "$linked_agents" -eq 1 ]; then continue; fi
   destination=${destinations[$i]}
   if { [ "$i" -lt 4 ] && owned_agent "$i"; } ||
     { [ "$i" -eq 4 ] && owned_link "$destination" "${sources[$i]}"; }; then

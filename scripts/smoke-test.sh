@@ -44,7 +44,9 @@ for i in 0 1 2 3 4; do
   destination=${destinations[$i]}
   unchanged_resource "$i" || fail "Missing, stale, modified, symlinked agent, or foreign installation: $destination"
   [ -e "$destination" ] || fail "Broken installation link: $destination"
-  printf 'OK %s\n' "$destination"
 done
-printf 'PASS: structure, regular agent copies, receipts, Skill link, metadata presence, and shell syntax.\n'
-printf 'This is not a full TOML/YAML parser or proof of runtime delegation. Run the README conversational smoke test.\n'
+if [ "$agent_sources" != "$template_sources" ]; then
+  require_commands python3
+  python3 "$repo_dir/scripts/models.py" verify --target "$target" --home "$agent_home" --repo "$repo_dir"
+fi
+printf 'PASS: %s agents and Skill verified.\n' "$target"
