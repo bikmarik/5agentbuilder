@@ -65,3 +65,13 @@ resolved blocking findings and passing required integration checks. If new evide
 cannot advance a repair/rebuttal loop, state the missing access, evidence, or decision
 and report incomplete work. Never manufacture agreement or repeat the same arguments
 until a reviewer gives in.
+
+## Claude Code adaptation
+
+Claude Code reads the four Markdown definitions and runs the same phases through
+its named Agent tool. Its Scout and Verifier allow only Read, Grep, and Glob; they
+must route shell-based reproductions through CHIEF rather than claiming execution.
+Builder has shell and file-edit tools. Operator has shell for integration checks;
+that tool can write, so its no-feature-edit rule remains a behavioral restriction.
+Both clients require explicit user invocation of the Skill. Neither entrypoint
+creates another CHIEF agent or enables nested delegation.

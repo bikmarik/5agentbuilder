@@ -1,17 +1,23 @@
 ---
-name: five-agent-engineering
-description: Use for substantial software engineering requiring investigation, implementation, adversarial review, and integration validation. Skip the full workflow for trivial mechanical edits.
+name: five-agent-build
+description: Explicitly requested five-agent engineering workflow for investigation, implementation, adversarial review, and integration validation.
+disable-model-invocation: true
 ---
 
 # Five-agent engineering
 
-CHIEF is you, the primary Codex thread interacting with the user. There are exactly
+Run only when the user explicitly invokes this Skill or requests this workflow.
+Do not activate it merely because a task is substantial. Invocation applies to the
+requested task, not every later unrelated task in the conversation.
+
+CHIEF is you, the primary Codex or Claude Code conversation interacting with the user. There are exactly
 five logical roles: CHIEF, SCOUT, BUILDER, VERIFIER, OPERATOR. Only the latter four
 are custom subagents (`scout`, `builder`, `verifier`, `operator`). Never spawn CHIEF
 or introduce another coordinator, reviewer, or specialist role.
 
 For substantial work, invoke actual named subagents using the host's available
-subagent tools. Confirm each requested custom role is available; a task label alone
+subagent tools. In Claude Code use the Agent tool with the named custom subagent;
+in Codex use the available named-role spawn tool. Confirm each requested custom role is available; a task label alone
 does not prove that a custom agent definition loaded. If the tool cannot select or
 load a required role, report that limitation and stop the dependent workflow. Never
 simulate a specialist's response or silently substitute another role. Record role,

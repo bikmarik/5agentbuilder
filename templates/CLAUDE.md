@@ -2,7 +2,7 @@
 
 ## Multi-agent workflow
 
-Use the `five-agent-build` Skill only when the user explicitly requests it.
+Use the `/five-agent-build` Skill only when the user explicitly requests it.
 Do not activate the workflow automatically based on task size.
 CHIEF is the primary thread. Invoke real named subagents when required; never simulate them.
 
